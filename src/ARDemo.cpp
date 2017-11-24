@@ -1,13 +1,13 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
-#include <HEstimator.h>
 #include <ARCube.h>
-#include <decompose_homography.h>
 
 using namespace std;
 using namespace qrar;
 using namespace cv;
 
+//@deprecated
+//use homography to marker the 2d vetexes
 void MarkQrcode(const Mat& left, const Mat& H, Mat& out2, cv::Scalar s = cv::Scalar(0, 255, 0))
 {
 	std::vector<Point2d> vetexes(4);
@@ -24,51 +24,33 @@ void MarkQrcode(const Mat& left, const Mat& H, Mat& out2, cv::Scalar s = cv::Sca
 	}
 }
 
-void ARDemo(const vector<Point2d>& vertexes,const vector<Point2d>& vertexes_in_frame,Mat qrcode,Mat current_frame)
+Mat ARDemo(const Vec2d& real_size,const vector<Point2d>& vertexes_in_frame,const Mat& current_frame)
 {
-	//draw a rectangle to mark the qrcode aera
-	Mat homography;
-	EstimateHByDLT(vertexes, vertexes_in_frame, homography);
-	Mat result1 = current_frame.clone();
-	MarkQrcode(qrcode, homography, result1);
-	imshow("result", result1);
+	int f = 535;
+	int cx = 320;
+	int cy = 240;
+	Matx33d K;//camera_instrinct
+	K << f, 0, cx,
+		0, f, cy,
+		0, 0, 1;
 
-	CameraPtr assume = make_shared<Camera>();
-	auto f = min(qrcode.cols, qrcode.rows);
-	assume->SetParameter(f, f, qrcode.cols / 2, qrcode.rows / 2);
-	CameraPtr mobile_phone = make_shared<Camera>();
+	ArCube cube(real_size[0], real_size[1]);
+	cube.Init();
 
-	vector<Mat> tContainer, nContainer, RContainer;
-	qrar::DecomposeHomography(homography, assume->GetK(), mobile_phone->GetK(), RContainer, tContainer, nContainer);
+	vector<Point3d> veterxes3d = { cube.vertex3d[0],cube.vertex3d[2],cube.vertex3d[4],cube.vertex3d[6] };
+	Vec3d tvec;
+	Mat rvec;
+	cv::Mat distCoeffs = cv::Mat::zeros(5, 1, CV_64FC1);
+	solvePnP(veterxes3d, vertexes_in_frame, K, distCoeffs, rvec, tvec);
+	cv::Matx33d R;
+	cv::Rodrigues(rvec, R);
+	cv::Vec3d t = tvec;
 
-	int maxIdx = -1;
-	double maxd = -1;
-	for (int i = 0; i < 4; ++i) {
-		if ((nContainer[i].at<double>(2)) >(maxd)) {
-			maxd = nContainer[i].at<double>(2);
-			maxIdx = i;
-		}
-	}
-	cv::Vec3d t = tContainer[maxIdx];
-	cv::Matx33d R = RContainer[maxIdx];
-	cv::Vec3d n = nContainer[maxIdx];
-	cv::Matx44d T;
-	for (int i = 0; i < 3; ++i) {
-		for (int j = 0; j < 3; ++j) {
-			T(i, j) = R(i, j);
-		}
-		T(i, 3) = t(i);
-		T(3, i) = 0;
-	}
-	T(3, 3) = 1;
+	cube.Transform(K, R, t);
+	Mat result = current_frame.clone();
+	cube.DrawOn(result);
 
-	ArCube cube;
-	cube.Init(assume);
-	cube.Transform(mobile_phone, T);
-	Mat result2 = current_frame.clone();
-	cube.DrawOn(result2);
-	imshow("result2", result2);
-	cv::waitKey(0);
+	return result;
 }
 
 
