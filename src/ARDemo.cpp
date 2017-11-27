@@ -24,6 +24,7 @@ void MarkQrcode(const Mat& left, const Mat& H, Mat& out2, cv::Scalar s = cv::Sca
 	}
 }
 
+//vertexes in the order:left-top,right-top,right-bottom,left-bottom
 Mat ARDemo(const Vec2d& real_size,const vector<Point2d>& vertexes_in_frame,const Mat& current_frame)
 {
 	int f = 535;
@@ -37,15 +38,25 @@ Mat ARDemo(const Vec2d& real_size,const vector<Point2d>& vertexes_in_frame,const
 	ArCube cube(real_size[0], real_size[1]);
 	cube.Init();
 
-	vector<Point3d> veterxes3d = { cube.vertex3d[0],cube.vertex3d[2],cube.vertex3d[4],cube.vertex3d[6] };
-	Vec3d tvec;
-	Mat rvec;
+	cv::Vec3d t;
+	Vec3d rvec;
 	cv::Mat distCoeffs = cv::Mat::zeros(5, 1, CV_64FC1);
-	solvePnP(veterxes3d, vertexes_in_frame, K, distCoeffs, rvec, tvec);
+	solvePnP(cube.vertex3d, vertexes_in_frame, K, distCoeffs, rvec, t,false, SOLVEPNP_ITERATIVE);
+	Mat r, tt;
+	//solvePnP(veterxes3d, vertexes_in_frame, K, distCoeffs, r, tt, false, SOLVEPNP_UPNP);
+	Matx44d T;
 	cv::Matx33d R;
 	cv::Rodrigues(rvec, R);
-	cv::Vec3d t = tvec;
-
+	for (size_t i = 0; i < 3; i++)
+	{
+		for (size_t j = 0; j < 3; j++)
+		{
+			T(i, j) = R(i, j);
+		}
+		T(3, i) = t(i);
+	}
+	T(3, 3) = 1;
+	cout << T.inv() << endl;
 	cube.Transform(K, R, t);
 	Mat result = current_frame.clone();
 	cube.DrawOn(result);
